@@ -1,0 +1,411 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Prolite PL-M2014R Serial Protocol by rfilmyer</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/github-light.css">
+    <meta name="viewport" content="width=device-width">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Prolite PL-M2014R Serial Protocol</h1>
+        <p>Keeping information about the Prolite PL-M2014R from http://wls.wwco.com/ledsigns/prolite up on a different site, because if this site went down it would be an absolute disaster</p>
+
+        <p class="view"><a href="https://github.com/rfilmyer/prolite-info">View the Project on GitHub <small>rfilmyer/prolite-info</small></a></p>
+
+
+        <ul>
+          <li><a href="https://github.com/rfilmyer/prolite-info/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/rfilmyer/prolite-info/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/rfilmyer/prolite-info">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h3>
+<a id="note-im-just-working-off-of-this-page-and-not-done-pull-requests-are-accepted-" class="anchor" href="#note-im-just-working-off-of-this-page-and-not-done-pull-requests-are-accepted-" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Note: I'm just working off of <a href="http://wls.wwco.com/ledsigns/prolite/ProliteProtocol.html">this page</a>, and not done. Pull requests are accepted :)</h3>
+
+<h1>
+<a id="prolite-protocol-rom-524q" class="anchor" href="#prolite-protocol-rom-524q" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Prolite Protocol (ROM 5.24Q)</h1>
+
+<p>This page contains advanced protocol information for communicating with the Pro-Lite PL-M2014R message board over the RS-232 port. (This is very easy to do with Linux.)
+The Basic Pro-Lite ASCII-Series Version 5.25 information is available in <a href="">Word format</a> from the manufacturer. It is not accurate for the PL-M2014R, but it is pretty.</p>
+
+<p>The sign can only accept commands up to 1,023 bytes in length. This includes packet headers and trailers, leaving the maximum command length of 1016 characters for all text and attributes.</p>
+
+<p>With 26 pages, each approximately 1,024 bytes long (accounting for internal overhead), this leaves 26,624 characters of text that the unit can hold, not counting trivia usage.</p>
+
+<p>Long messages must be stored in multiple pages, and a timer created (most likely with a value of "always") to put the pages in a display sequence.</p>
+
+<p>Note that text gets into the sign's memory one of two ways. The first is entering the text from the remote control. The second is from the RS232 port. Input from the RS232 port is subject to pre-processing. This means if you want the text <code>&lt;CA&gt;</code> in your text, the RS232 is going to interpret that as a color code, while the remote control will not.</p>
+
+<p>While communication is bi-directional, you can only receive acknowledgements the sign received a command. You can not obtain the message in the sign, you can not download the graphics or character shapes, you can not ask the time, you can not read the timers, you can not determine which page is running, you can not tell when the message scrolling by ends.</p>
+
+<p>Apparently with the 5.24Q ROM, if you send a lot of garbage to the sign that it does not recognize, the sign will stop responding to commands. The only way to clear it seems to be unplugging the sign, waiting a moment, and plugging it back in. You'll see a brief "CHECKING..." message.</p>
+
+<p>Unit Identification</p>
+
+<p>Each unit is given an ID number from its setup mode using the remote. Apparently it is possible to chain 255 units together.
+The protocol can talk to an individual unit, or all units, but not a group of unit IDs. I doubt it is a good idea to give more than one unit the same ID number, since each unit sends back a reply when it is sent a unit-specific command.</p>
+
+<h2>
+<a id="protocol-structure" class="anchor" href="#protocol-structure" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Protocol Structure</h2>
+
+<pre><code>&lt;IDxx&gt;
+&lt;IDxx&gt;...TEXT/COMMAND.. cr lf
+</code></pre>
+
+<ul>
+<li><p><code>&lt;IDxx&gt;</code> - Packet header also serving as destination identifier.
+** <code>&lt;, &gt;</code> are really <code>&lt;</code> (<code>0x3C</code>) and <code>&gt;</code> (<code>0x3D</code>)<code>
+**</code>ID<code>is the string</code>ID<code>(</code>0x49<code>,</code>0x44<code>). This must be in uppercase.
+**</code>xx<code>This is the unit ID represented as a two digit hex number in ASCII, using a leading zero if necessary.</code>
+*** <code>00</code> = all units (Note: no display units will reply on a global request)
+*** <code>01</code> = display unit 1
+*** <code>02</code> = display unit 2
+*** <code>...</code>
+*** <code>0A</code> = display unit 10
+*** <code>...</code>
+*** <code>10</code> = display unit 16
+*** <code>...</code>
+*** <code>FE</code> = display unit 254<code>
+***</code>FF<code>= display unit 255</code></p></li>
+<li><p><code>...TEXT/COMMAND...</code> Packet body either Display Data or Command
+<em><code>cr lf</code> All packets end with a Carriage Return and Line Feed
+*</em><code>cr</code> = <code>0x0D</code>
+**<code>lf</code> = <code>0x0A</code></p></li>
+</ul>
+
+<h3>
+<a id="important-notes" class="anchor" href="#important-notes" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Important Notes:</h3>
+
+<p>If the sign has been idle (not received any communication) for over one minute, it must be sent the protocol header <code>&lt;IDxx&gt; cr lf</code> to wake up. The protocol header can be thought of as being similiar to the AT command for Hayes modems, which wake up the modem putting it into command mode and prefixing all modem commands.
+When a sign accepts a wake up or command, it will respond back with the same protocol header: <code>&lt;IDxx&gt; cr lf</code> to signal the sign is awake.</p>
+
+<p>Each packet(s) must consist of a unique ID number, except the SET CLOCK command (see Command section).</p>
+
+<p>An <code>&lt;IDxx&gt;</code> will answer from the sign if sign receives the data unless they are SET CLOCK command and global call.</p>
+
+<h2>
+<a id="display-text-pages" class="anchor" href="#display-text-pages" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Display Text Pages</h2>
+
+<p>The sign has the ability to store 26 messages, each partition is called a page. A page is identified by a letter from A to Z (in uppercase). The length of each page is dynamic. A page can contain text, graphics, and European characters in various colors and sizes using different presentation techniques.</p>
+
+<p>Syntax:</p>
+
+<p><code>&lt;Pn&gt;...MSG...</code></p>
+
+<ul>
+<li>
+<code>&lt;Pn&gt;</code> denotes which page this message belongs to</li>
+<li>
+<code>&lt;</code>, <code>P</code>, <code>&gt;</code> are ASCII characters.</li>
+<li>
+<code>n</code> is the page number in ASCII character, i.e.
+** <code>A</code> = Page A
+** <code>B</code> = Page B
+** ...
+** <code>Y</code> = Page Y
+** <code>Z</code> = Page Z</li>
+<li>
+<code>...MSG...</code> Contents message data of this page including color information, character size information &amp; display functions etc.</li>
+</ul>
+
+<h1>
+<a id="havent-formatted-past-here" class="anchor" href="#havent-formatted-past-here" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Haven't formatted past here</h1>
+
+<p>The text of the message may be any text in free format, consisting of letters, numbers, and symbols. Only characters <code>0x20</code> to <code>0x7F</code> are supported.</p>
+
+<p>Important Notes:
+If  is not specified, page A is assumed as default.
+If no page content is provided, the page is not made empty. It is treated as a NOP (no-operation). To blank a page, use a space (which will scroll a space), or delete the page.</p>
+
+<p>European Characters</p>
+
+<p>European characters can be displayed in the board using a syntax that is similar to HTML tags.
+    É          Ç          Broken          Broken          O overlaid with ×
+    ü          upsidedown V            three bars          pi          ï
+    sum         ¥      <ul>    ¢          Broken          Broken
+    Ò          Ù          ê          û          two tall skiny F's
+    î          Omega           Broken          ë          Broken
+    ô          Broken</ul></p>
+
+<p>    Ø          Ä          Broken          Broken          Ó
+    Å          Í          Ú          Þ          similar to ç
+    þ          Ð      <ul>    ð          Broken          Broken
+    umlat G         Ö          Æ          Ü          á
+    í          like ç but with S          Broken          ú          Broken
+    ô          Broken</ul></p>
+
+<p>    à          ¡          é          È          £
+    lower Psi           upper Phi           è          ì          ç
+<a href="mailto:U@">U@</a>    ê          ø          umlat Y         ý          å
+    ß          bared ã            lower gamma         á          bar Ñ
+    â          ó          ¤          æ          bar ñ
+    upside down ?           upper gamma         upper delta         ö          ä
+    ö          lower alpha         null, no text           ä          ß
+    Not defined         Not defined         Not defined         Not defined         Not defined
+    Not defined
+Important Notes:</p>
+
+<p>This particular listing is believed to be very accurate, unlike other sources of documentation for the PL-M2014R.
+Apparently the following table codes do not work: B, C, M, N, V, X, Z, b, c, m, n, v, x, and z</p>
+
+<p>In addition undocumented symbols have been presented here, and while these characters can show up in the character set, it is undetermined why. For instance  by itself shows nothing, but as XxxYyy it shows up as a ö;  by itself shows up as a lowercase Greek alpha, but as ZZZZ the command won't even get accepted. The behavior seems very much based on position.</p>
+
+<p>Graphic Blocks</p>
+
+<p>There are 26 reprogramable graphic blocks.
+    Telephone           Glasses         Tap         Rocket          Monster
+    Key         Shirt           Helicopter          Car         Tank
+    House           Teapot          Knife &amp; Fork            Duck            Motorcycle
+    Bicycle         Crown       <br>    Sweet Heart         Arrow Right         Arrow Left
+    Arrow Down-Left         Arrow Up-Left           Mug of Beer         Chair           High-heeled Shoes
+    Wine Glass
+Note:
+The Monster and Chair are pretty lame. These are good candidates for experimenting with replacement graphics. If you've blown your board's graphics away, simply disconnecting the power and reconnecting will restore the graphics or use the delete all command.</p>
+
+<p>Colors</p>
+
+<p>There are 26 color modes.
+    Dim Red         Red         Bright Red
+    Orange          Bright Orange           Light Yellow
+    Yellow          Bright Yellow           Lime
+    Dim Lime            Bright Lime         Bright Green
+    Green           Dim Green           Yellow/Green/Red
+    Rainbow (Default)           Red/Green 3D            Red/Yellow 3D
+    Green/Red 3D            Green/Yellow 3D         Green on Red
+    Red on Green            Orange on Green 3D          Lime on Red 3D
+    Green on Red 3D         Red on Green 3D
+Note:
+Some of these color combinations look so bad that they should require a permit.</p>
+
+<p>To define a color, the attribute code must be placed before the text. There is no "I'm done with the color" code, just switch to a different one.</p>
+
+<p>Character Sizes</p>
+
+<p>    Normal (Default)            Flashing Normal
+    Bold (Wide)         Flashing Bold (Wide)
+    Italic          Flashing Italic
+    Bold Italic (Wide)          Flashing Bold Italic (Wide)
+To define a size, the attribute code must be placed before the text. There is no "I'm done with the size" code, just switch to a different one.</p>
+
+<p>Display Functions</p>
+
+<p>    AUTO
+Random color &amp; presentation         OPEN
+&lt;-- Open from Center --&gt;            COVER
+&lt;-- Covers Text --&gt;         APPEAR
+Instantly replaces text         CYCLING
+Rolling Colors
+    CLOSE &lt;--
+Blank screen right to left          CLOSE --&gt;
+Blank screen left to right          CLOSE --&gt;&lt;--
+Blank screen outter to center           SCROLL UP
+Scroll up from bottom           SCROLL DOWN
+Scroll down from top
+    OVERLAP
+Two layers slide together to form text          STACKING
+Falling dots form text          COMIC 1
+PacMan          COMIC 2
+Random creature walking         BEEP
+Sign beeps
+    PAUSE
+Short delay of motion           SLEEP
+Blank screen until the next timer activates         RANDOM
+Random dots appear forming text         SHIFT &lt;--
+Roll message right to left (Default)            TIME/DATE
+Show time and date, no choice of formatting 
+    MAGIC
+Change text color each time         THANK YOU
+Cursive "Thank you"         WELCOME
+Cursive "Welcome"           SPEED 1
+Jittery         SPEED 2
+    SPEED 3
+Note:
+AUTO, OPEN &lt;-- --&gt;, COVER &lt;-- --&gt;, APPEAR, CYCLING, SCROLL UP, SCROLL DOWN, RANDOM, and MAGIC terminate their behavior by either another function or when the screen is full of text.
+For best effect, CLOSE operations should happen after text has been displayed, not as the start of a presentation.</p>
+
+<p>Timer Scheduling</p>
+
+<p>Aside from being able to play a specific page, the message board has 10 timers. Each timer has an ordered sequence from 1 to 32 pages to display associated with it, there may be duplicates.
+A timer may be thought of a request such as: "when the time of day matches my timer settings, display this sequence of message pages. For example, at 1:PM display pages A, B, and C; while at 5:PM display page A twice, then page D, then page A again, then page E.</p>
+
+<p>Note that if there are two timers that would both be active, the page sequence appears to be randomly selected, and the timers are not checked again until after the whole sequence has been displayed at least once.</p>
+
+<p>Once a timer is set, it can be replaced or deleted. To use the timers, it is important to set the clock in the message board.</p>
+
+<p>WHHMMPPP....cr lf</p>
+
+<p>    denotes the Timer n, where n = A to J
+&lt;,T &amp; &gt; are ASCII character "&lt;" "T" &amp; "&gt;" respectively n is the Timer (schedule) number in ASCII character, i.e.
+A = Timer A
+B = Timer B
+...
+I = Timer I
+J = Timer J
+W denotes the day of week where this schedule activates, the valid values are as follow (in a single ASCII character form):</p>
+
+<ul>
+<li>= Every day of the week
+0 = Sunday
+1 = Monday
+...
+5 = Friday
+6 = Saturday
+HH denotes the Hour when this schedule activates, the valid values are as follow (in two ASCII character form, 24 hour notation with leading zeros):
+** = Every hour of the day
+00 = midnight
+01 = 1:AM
+...
+13 = 1:PM
+...
+18 = 6:PM
+...
+23 = 11:PM
+MM denotes the minute when this schedule activates, the valid values are as follow (in two ASCII character form, with leading zeros):
+** = Every minute of the hour
+00 to 59 = specific minutes to start
+PPP.... denotes the Page sequence in this schedule, the length of the sequence is dynamic upto 32 entries, the valid page number ranges from A to Z. Duplicate pages are allowd.
+Note: Timers are treated as start times for a message to display. Timers are checked once a minute.
+Reprogramming a Graphic Block</li>
+</ul>
+
+<p>There are 26 (A - Z) user alterable graphic blocks available, the basic format is as follow:
+...CCC...cr lf</p>
+
+<p>    = ASCII "&lt;","G" &amp; "&gt;"
+n= Block graphic number in ONE ASCII character (A - Z)
+...CCC... is a bit pattern specifying the color information of the graphic block in a fixed length of 126 bytes.</p>
+
+<p>A graphic block consists a matric of 18 dots wide by 7 rows tall. Each cell can be either Red, Yellow, Green, or unlit as Black.
+Byte 1 -&gt;
+Byte 19 -&gt;
+Byte 37 -&gt;
+Byte 55 -&gt;
+Byte 73 -&gt;
+Byte 91 -&gt;
+Byte 109 -&gt; RRRRRRRRRRRRRRRRRR
+YYYYYYYYYYYYYYYYYY
+GGGGGGGGGGGGGGGGGG
+RRRRRRBBBBBBBRRRRR
+RRRRRRBBBBBBBRRRRR
+RRRRRRRRRRRRRRRRRR
+GGGGGYYYYYYYRRRRRR
+RRRRRRRRRRRRRRRRRR  &lt;-- Byte 18
+&lt;-- Byte 36
+&lt;-- Byte 54
+&lt;-- Byte 72
+&lt;-- Byte 90
+&lt;-- Byte 108
+&lt;-- Byte 126</p>
+
+<p>For each byte it can either be "R" (red), "G" (green), "Y" (yellow) or "B" (black) . Any characters other than "R","G","Y" &amp; "B" are treated as Black.
+The above picture could be represented with the following command, which would update graphic block X on display board 01:
+RRRRRRRRRRRRRRRRRRYYYYYYYYYYYYYYYYYYGGGGGGGGGGGGGGGGGG
+RRRRRRBBBBBBBRRRRRRRRRRRBBBBBBBRRRRRRRRRRRRRRRRRRRRRRRGGGGGYYYYYY
+YRRRRRRRRRRRRRRRRRRRRRRRRcr lf  This line was too long to fit on the screen, it is contiguous when sent to the sign.
+Note:
+If any more than 126 bytes are sent, specifying the graphic block, the request will be ignored.
+Commands</p>
+
+<p>Delete Page(s)</p>
+
+<p>cr lf
+&lt;,D,P&amp; &gt; = ASCII "&lt;","D","P" &amp; "&gt;"
+n Page number in ASCII character (A - Z &amp; <em>)
+&lt;DP</em>&gt;   =   Delete All pages
+   =   Delete page A
+...
+   =   Delete page Z
+Delete Timer(s)</p>
+
+<p>cr lf
+&lt;,D,T&amp; &gt; = ASCII "&lt;","D","T" &amp; "&gt;"
+n Timer (Schedule) number in ASCII character (A - J &amp; <em>)
+&lt;DT</em>&gt;   =   Delete ALL timers
+   =   Delete TIMER A
+...
+   =   Delete TIMER J
+Delete Graphic block(s)</p>
+
+<p>cr lf
+&lt;,D,G&amp; &gt; = ASCII "&lt;","D","G" &amp; "&gt;"
+n Graphic block number in ASCII character (A - Z &amp; <em>)
+&lt;DP</em>&gt;   =   Delete All graphics
+   =   Delete Graphic block A
+...
+   =   Delete Graphic block Z
+Delete ALL</p>
+
+<p>This command will delete all Page(s), Timer(s) and restore all default Graphic blocks.
+cr lf</p>
+
+<p>&lt;,D,<em>&amp; &gt; = ASCII "&lt;","D","</em>" &amp; "&gt;"
+Run Page Now</p>
+
+<p>cr lf
+&lt;,R,P &amp; &gt; = ASCII "&lt;","R","P" &amp; "&gt;"
+n Page in ASCII character (A - Z &amp; <em>)
+&lt;RP</em>&gt;   =   Resume display of interrupted timer
+ = Run Page A
+...
+   =   Run Page Z
+Note: Running a page (A-Z) stops the timer check from happening. This is useful for interrupting a timer sequence to display an important piece of information.
+Set Clock</p>
+
+<p>This is a special command to sync. or set the relative/real time clock of the display unit(s) and it is the only GLOBAL command in this set of protocol. You do not prefix this command with an  header. The format as shown below:
+cr lf</p>
+
+<p>&lt;, T &amp; &gt;    ASCII "&lt;", "T" &amp; "&gt;"
+YY  Year (00 - 99)
+MM  Month (01 - 12)
+DD  Day (01 - 31)
+W   Day of week (0 - 6)
+hh  Hour (in 24 hour format, 00 - 23)
+mm  Minute (00 - 59)
+ss  Second (00 - 59)
+Trivia Mode</p>
+
+<p>Triva mode divides the 32K into two 16K banks, and it operates by displaying a trivia question, your message, a trivia answer, your message, another trivia question, your message, another trivia answer, your message, and so on.
+By deleting the trivia from the message board, the full memory may be used.</p>
+
+<p><q>cr lf
+trivia text questioncr lf
+trivia text answercr lf
+...repeat the above as desired
+</q></p>
+
+<p>xx = unit ID (it is recommended you use 00) Important Notes:
+There is no reason your trivia messages can't be complex with color codes and presentations. While you are loading trivia text, no trivia will display. Additionally, you do not need to limit yourself to trivia or to pairs of lines. The sign will display the first line, the message, then the next line, then the message, and so on.
+Not specifying any trivia questions/answers will delete the trivia from the sign, thus making the 32K available for your messages.</p>
+
+<p>If you do not have PC or cable to delete the Trivia you can open the sign from the left and remove the RAM chip for 3 seconds. This deletes all the memory in the sign.</p>
+
+<p>There are three chips in sockets: two small and one large. The small with label is the EPROM. The other small without a label is the RAM (this is the one you want to remove). The arge without label is the CPU; removing it is a bad idea.</p>
+
+<p>To get the trivia back, either reset the unit, or load a Generic Trivia file or use the software that you can order.</p>
+
+<p>Examples</p>
+
+<p>cr lf Wake up unit 1
+Hello World cr lf Display the words Hello World on unit 1
+<q>cr lf
+cr lf Erase Trivia on all units
+cr lf With no text, the display halts the scrolling</q></p>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/rfilmyer">rfilmyer</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
